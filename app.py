@@ -16,15 +16,7 @@ try:
 except Exception:
     YOLO_AVAILABLE = False
 
-from compliance import (
-    DEFAULT_PPE_CLASSES,
-    compute_iou,
-    assign_ppe_to_people,
-    compute_compliance_for_people,
-    draw_annotations,
-)
-
-# Configure the Streamlit page
+# 👉 configure page (do this once)
 st.set_page_config(page_title="PPE Compliance Monitor", page_icon="🦺", layout="wide")
 
 st.title("🦺 Computer Vision PPE Compliance Dashboard")
@@ -36,15 +28,24 @@ if not YOLO_AVAILABLE:
         "Ultralytics / OpenCV could not be imported.\n\n"
         "Since you're on Streamlit Cloud, make sure:\n"
         "1) `requirements.txt` has:\n"
-        "   - streamlit==1.37.0\n"
-        "   - ultralytics==8.2.103\n"
-        "   - opencv-python-headless==4.9.0.80\n"
+        "   streamlit==1.37.0\n"
+        "   ultralytics==8.2.103\n"
+        "   opencv-python-headless==4.9.0.80\n"
         "2) `runtime.txt` has: python-3.10\n"
         "Then redeploy."
     )
     st.stop()
 
-# Sidebar controls
+# ✅ only import compliance AFTER we know cv2 works
+from compliance import (
+    DEFAULT_PPE_CLASSES,
+    compute_iou,
+    assign_ppe_to_people,
+    compute_compliance_for_people,
+    draw_annotations,
+)
+
+# ───────── sidebar ─────────
 st.sidebar.title("🦺 PPE Compliance Monitor")
 st.sidebar.write("Upload an image or capture from webcam.")
 
@@ -89,9 +90,12 @@ def load_model(_uploaded_bytes=None):
 
 model = load_model(uploaded_weights if weights_src == "Upload .pt file" else None)
 
+# ───────── main tabs ─────────
 tab1, tab2 = st.tabs(["📤 Upload Image", "📷 Camera"])
 with tab1:
-    image_files = st.file_uploader("Upload one or more images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    image_files = st.file_uploader(
+        "Upload one or more images", type=["jpg", "jpeg", "png"], accept_multiple_files=True
+    )
 with tab2:
     cam_img = st.camera_input("Capture from webcam")
     if cam_img is not None:
@@ -167,6 +171,7 @@ for idx, up in enumerate(image_files, start=1):
             ]
         )
 
+# ───────── summary / report ─────────
 if len(all_people_records):
     report = pd.concat(all_people_records, ignore_index=True)
     summary = report["status"].value_counts().reindex(["GREEN", "YELLOW", "RED"], fill_value=0)
@@ -182,7 +187,10 @@ if len(all_people_records):
 
     csv_bytes = report.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "📥 Download Compliance Report (CSV)", data=csv_bytes, file_name="ppe_compliance_report.csv", mime="text/csv"
+        "📥 Download Compliance Report (CSV)",
+        data=csv_bytes,
+        file_name="ppe_compliance_report.csv",
+        mime="text/csv",
     )
 else:
     st.info("No people detected across the submitted images.")
