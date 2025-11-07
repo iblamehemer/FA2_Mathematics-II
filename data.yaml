@@ -1,0 +1,25 @@
+# Dataset configuration for PPE detection.
+#
+# This YAML file follows the format expected by Ultralytics YOLOv8.
+# You must update the `train`, `val` and `test` paths to point to the
+# appropriate directories on your system.  Each of these directories
+# should contain an `images/` folder with the images and a `labels/`
+# folder with YOLO‑formatted label files.
+
+train: /Users/hp/Downloads/ppe_app_streamlit/datasets/train/images
+val:   /Users/hp/Downloads/ppe_app_streamlit/datasets/valid/images
+test:  /Users/hp/Downloads/ppe_app_streamlit/datasets/test/images
+
+
+# Number of classes
+nc: 5
+
+# Class names.  The order here must match the class IDs in the labels.
+names: ['boots', 'gloves', 'helmet', 'human', 'vest']
+
+roboflow:
+ workspace: hx-hezqh
+ project: ppe-detection-yfmym
+ version: 1
+ license: CC BY 4.0
+ url: https://universe.roboflow.com/industrial-safety/ppe-shikk/dataset/2
