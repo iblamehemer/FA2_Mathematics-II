@@ -22,22 +22,20 @@ st.set_page_config(page_title="PPE Compliance Monitor", page_icon="🦺", layout
 st.title("🦺 Computer Vision PPE Compliance Dashboard")
 st.caption("Upload an image or use your webcam to detect PPE and classify worker compliance (Green/Yellow/Red).")
 
-# ❗ if ultralytics/opencv didn’t import, stop nicely
+# ❗ if ultralytics/opencv didn’t import, show demo instead of dying
 if not YOLO_AVAILABLE:
-    st.error(
-        "Ultralytics / OpenCV could not be imported.\n\n"
-        "Since you're on Streamlit Cloud, make sure:\n"
-        "1) `requirements.txt` has:\n"
-        "   streamlit==1.37.0\n"
-        "   ultralytics==8.2.103\n"
-        "   opencv-python-headless==4.9.0.80\n"
-        "2) `runtime.txt` has: python-3.10\n"
-        "Then redeploy."
+    st.warning(
+        "Ultralytics / OpenCV could not be imported on Streamlit Cloud.\n"
+        "This is a demo view of the app. To run full detection, run locally:\n"
+        "`pip install -r requirements.txt` and then `streamlit run app.py`."
     )
-    st.stop()
-
-# ✅ only import compliance AFTER we know cv2 works
-from compliance import (
+    demo_df = pd.DataFrame([
+        {"image_index": 1, "person_id": 1, "status": "GREEN", "present_items": "helmet, vest", "missing_items": "", "violations": 0, "num_ppe_detected": 2},
+        {"image_index": 1, "person_id": 2, "status": "RED", "present_items": "", "missing_items": "All PPE", "violations": 1, "num_ppe_detected": 0},
+    ])
+    st.subheader("Sample Compliance Output")
+    st.dataframe(demo_df)
+    st.stop()from compliance import (
     DEFAULT_PPE_CLASSES,
     compute_iou,
     assign_ppe_to_people,
