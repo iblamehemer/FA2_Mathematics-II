@@ -8,34 +8,16 @@ from PIL import Image
 import streamlit as st
 import plotly.express as px
 
-# 🔐 try to import YOLO + cv2 safely
-YOLO_AVAILABLE = True
 try:
     from ultralytics import YOLO
-    import cv2
-except Exception:
-    YOLO_AVAILABLE = False
+except Exception as e:
+    # If ultralytics is not installed, show a friendly error via Streamlit.
+    st.error("Ultralytics is not installed. Make sure `ultralytics` is in requirements.txt and installed.")
+    raise
 
-# 👉 configure page (do this once)
-st.set_page_config(page_title="PPE Compliance Monitor", page_icon="🦺", layout="wide")
+import cv2
 
-st.title("🦺 Computer Vision PPE Compliance Dashboard")
-st.caption("Upload an image or use your webcam to detect PPE and classify worker compliance (Green/Yellow/Red).")
-
-# ❗ if ultralytics/opencv didn’t import, show demo instead of dying
-if not YOLO_AVAILABLE:
-    st.warning(
-        "Ultralytics / OpenCV could not be imported on Streamlit Cloud.\n"
-        "This is a demo view of the app. To run full detection, run locally:\n"
-        "`pip install -r requirements.txt` and then `streamlit run app.py`."
-    )
-    demo_df = pd.DataFrame([
-        {"image_index": 1, "person_id": 1, "status": "GREEN", "present_items": "helmet, vest", "missing_items": "", "violations": 0, "num_ppe_detected": 2},
-        {"image_index": 1, "person_id": 2, "status": "RED", "present_items": "", "missing_items": "All PPE", "violations": 1, "num_ppe_detected": 0},
-    ])
-    st.subheader("Sample Compliance Output")
-    st.dataframe(demo_df)
-    st.stop()from compliance import (
+from compliance import (
     DEFAULT_PPE_CLASSES,
     compute_iou,
     assign_ppe_to_people,
@@ -43,7 +25,10 @@ if not YOLO_AVAILABLE:
     draw_annotations,
 )
 
-# ───────── sidebar ─────────
+# Configure the Streamlit page
+st.set_page_config(page_title="PPE Compliance Monitor", page_icon="🦺", layout="wide")
+
+# Sidebar controls
 st.sidebar.title("🦺 PPE Compliance Monitor")
 st.sidebar.write("Upload an image or capture from webcam.")
 
@@ -67,6 +52,18 @@ if weights_src == "Upload .pt file":
 
 @st.cache_resource(show_spinner=True)
 def load_model(_uploaded_bytes=None):
+    """Load the YOLO model from either a default path or uploaded bytes.
+
+    Parameters
+    ----------
+    _uploaded_bytes : file-like or None
+        If provided, this is the uploaded .pt weight file from the sidebar.
+
+    Returns
+    -------
+    model : YOLO
+        An instance of the YOLO model ready for inference.
+    """
     if _uploaded_bytes:
         tmp_path = Path("models/uploaded_best.pt")
         tmp_path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,12 +85,16 @@ def load_model(_uploaded_bytes=None):
 
 model = load_model(uploaded_weights if weights_src == "Upload .pt file" else None)
 
-# ───────── main tabs ─────────
+
+# Page content
+st.title("🦺 Computer Vision PPE Compliance Dashboard")
+st.caption(
+    "Upload an image or use your webcam to detect PPE and classify worker compliance (Green/Yellow/Red)."
+)
+
 tab1, tab2 = st.tabs(["📤 Upload Image", "📷 Camera"])
 with tab1:
-    image_files = st.file_uploader(
-        "Upload one or more images", type=["jpg", "jpeg", "png"], accept_multiple_files=True
-    )
+    image_files = st.file_uploader("Upload one or more images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 with tab2:
     cam_img = st.camera_input("Capture from webcam")
     if cam_img is not None:
@@ -111,6 +112,7 @@ for idx, up in enumerate(image_files, start=1):
     img_np = np.array(image)
 
     try:
+        # Perform inference on the numpy array
         results = model.predict(source=img_np, conf=conf, iou=0.45, max_det=int(max_det), verbose=False)
     except Exception as e:
         st.error(f"Model inference failed: {e}")
@@ -128,14 +130,12 @@ for idx, up in enumerate(image_files, start=1):
 
     dets = []
     for (x1, y1, x2, y2), c, cf in zip(boxes_xyxy, classes, confs):
-        dets.append(
-            {
-                "xyxy": [float(x1), float(y1), float(x2), float(y2)],
-                "cls_id": int(c),
-                "cls_name": model_names.get(int(c), str(int(c))),
-                "conf": float(cf),
-            }
-        )
+        dets.append({
+            "xyxy": [float(x1), float(y1), float(x2), float(y2)],
+            "cls_id": int(c),
+            "cls_name": model_names.get(int(c), str(int(c))),
+            "conf": float(cf),
+        })
 
     people, ppe = assign_ppe_to_people(dets, model_names)
     people_status, annotated = compute_compliance_for_people(
@@ -156,20 +156,9 @@ for idx, up in enumerate(image_files, start=1):
         df["image_index"] = idx
         all_people_records.append(df)
         st.dataframe(
-            df[
-                [
-                    "image_index",
-                    "person_id",
-                    "status",
-                    "present_items",
-                    "missing_items",
-                    "violations",
-                    "num_ppe_detected",
-                ]
-            ]
+            df[["image_index", "person_id", "status", "present_items", "missing_items", "violations", "num_ppe_detected"]]
         )
 
-# ───────── summary / report ─────────
 if len(all_people_records):
     report = pd.concat(all_people_records, ignore_index=True)
     summary = report["status"].value_counts().reindex(["GREEN", "YELLOW", "RED"], fill_value=0)
@@ -185,10 +174,7 @@ if len(all_people_records):
 
     csv_bytes = report.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "📥 Download Compliance Report (CSV)",
-        data=csv_bytes,
-        file_name="ppe_compliance_report.csv",
-        mime="text/csv",
+        "📥 Download Compliance Report (CSV)", data=csv_bytes, file_name="ppe_compliance_report.csv", mime="text/csv"
     )
 else:
     st.info("No people detected across the submitted images.")
