@@ -8,14 +8,13 @@ from PIL import Image
 import streamlit as st
 import plotly.express as px
 
+# 🔐 try to import YOLO + cv2 safely
+YOLO_AVAILABLE = True
 try:
     from ultralytics import YOLO
-except Exception as e:
-    # If ultralytics is not installed, show a friendly error via Streamlit.
-    st.error("Ultralytics is not installed. Make sure `ultralytics` is in requirements.txt and installed.")
-    raise
-
-import cv2
+    import cv2
+except Exception:
+    YOLO_AVAILABLE = False
 
 from compliance import (
     DEFAULT_PPE_CLASSES,
@@ -27,6 +26,23 @@ from compliance import (
 
 # Configure the Streamlit page
 st.set_page_config(page_title="PPE Compliance Monitor", page_icon="🦺", layout="wide")
+
+st.title("🦺 Computer Vision PPE Compliance Dashboard")
+st.caption("Upload an image or use your webcam to detect PPE and classify worker compliance (Green/Yellow/Red).")
+
+# ❗ if ultralytics/opencv didn’t import, stop nicely
+if not YOLO_AVAILABLE:
+    st.error(
+        "Ultralytics / OpenCV could not be imported.\n\n"
+        "Since you're on Streamlit Cloud, make sure:\n"
+        "1) `requirements.txt` has:\n"
+        "   - streamlit==1.37.0\n"
+        "   - ultralytics==8.2.103\n"
+        "   - opencv-python-headless==4.9.0.80\n"
+        "2) `runtime.txt` has: python-3.10\n"
+        "Then redeploy."
+    )
+    st.stop()
 
 # Sidebar controls
 st.sidebar.title("🦺 PPE Compliance Monitor")
@@ -52,18 +68,6 @@ if weights_src == "Upload .pt file":
 
 @st.cache_resource(show_spinner=True)
 def load_model(_uploaded_bytes=None):
-    """Load the YOLO model from either a default path or uploaded bytes.
-
-    Parameters
-    ----------
-    _uploaded_bytes : file-like or None
-        If provided, this is the uploaded .pt weight file from the sidebar.
-
-    Returns
-    -------
-    model : YOLO
-        An instance of the YOLO model ready for inference.
-    """
     if _uploaded_bytes:
         tmp_path = Path("models/uploaded_best.pt")
         tmp_path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,13 +89,6 @@ def load_model(_uploaded_bytes=None):
 
 model = load_model(uploaded_weights if weights_src == "Upload .pt file" else None)
 
-
-# Page content
-st.title("🦺 Computer Vision PPE Compliance Dashboard")
-st.caption(
-    "Upload an image or use your webcam to detect PPE and classify worker compliance (Green/Yellow/Red)."
-)
-
 tab1, tab2 = st.tabs(["📤 Upload Image", "📷 Camera"])
 with tab1:
     image_files = st.file_uploader("Upload one or more images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
@@ -112,7 +109,6 @@ for idx, up in enumerate(image_files, start=1):
     img_np = np.array(image)
 
     try:
-        # Perform inference on the numpy array
         results = model.predict(source=img_np, conf=conf, iou=0.45, max_det=int(max_det), verbose=False)
     except Exception as e:
         st.error(f"Model inference failed: {e}")
@@ -130,12 +126,14 @@ for idx, up in enumerate(image_files, start=1):
 
     dets = []
     for (x1, y1, x2, y2), c, cf in zip(boxes_xyxy, classes, confs):
-        dets.append({
-            "xyxy": [float(x1), float(y1), float(x2), float(y2)],
-            "cls_id": int(c),
-            "cls_name": model_names.get(int(c), str(int(c))),
-            "conf": float(cf),
-        })
+        dets.append(
+            {
+                "xyxy": [float(x1), float(y1), float(x2), float(y2)],
+                "cls_id": int(c),
+                "cls_name": model_names.get(int(c), str(int(c))),
+                "conf": float(cf),
+            }
+        )
 
     people, ppe = assign_ppe_to_people(dets, model_names)
     people_status, annotated = compute_compliance_for_people(
@@ -156,7 +154,17 @@ for idx, up in enumerate(image_files, start=1):
         df["image_index"] = idx
         all_people_records.append(df)
         st.dataframe(
-            df[["image_index", "person_id", "status", "present_items", "missing_items", "violations", "num_ppe_detected"]]
+            df[
+                [
+                    "image_index",
+                    "person_id",
+                    "status",
+                    "present_items",
+                    "missing_items",
+                    "violations",
+                    "num_ppe_detected",
+                ]
+            ]
         )
 
 if len(all_people_records):
